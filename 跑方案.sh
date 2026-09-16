@@ -14,6 +14,11 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ENGINE="/Users/chen/Documents/projects/agent-blueprint"
 OUT="${1:-v3-新一版}"
+shift || true
+
+# 输入默认是点子；也可以把某个文件当输入传进来（例如 PRD）
+INPUT="${BP_INPUT:-$DIR/docs/01-点子.md}"
+if [ $# -gt 0 ] && [ -f "$1" ]; then INPUT="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; shift; fi
 
 if [ ! -f "$DIR/.env" ]; then
   echo "❌ 缺少配置文件：$DIR/.env"
@@ -30,7 +35,7 @@ set +a
 cd "$ENGINE"
 echo "──────────────────────────────────────────────"
 echo "项目    ：读书养宠"
-echo "点子    ：$DIR/docs/01-点子.md"
+echo "输入    ：$INPUT"
 echo "模型    ：${MODEL_ID}"
 echo "网关    ：${ANTHROPIC_BASE_URL}"
 echo "超时    ：${ANTHROPIC_TIMEOUT:-120} 秒"
@@ -38,8 +43,7 @@ echo "机器产物：$DIR/产物/$OUT"
 echo "正式文档：$DIR/docs/方案-$OUT.md"
 echo "──────────────────────────────────────────────"
 
-shift || true
-.venv/bin/python -m blueprint plan "$DIR/docs/01-点子.md" -o "$DIR/产物/$OUT" "$@"
+.venv/bin/python -m blueprint plan "$INPUT" -o "$DIR/产物/$OUT" "$@"
 
 # 3) 把方案正文拷进文档区（人类唯一需要看的地方）
 mkdir -p "$DIR/docs"
