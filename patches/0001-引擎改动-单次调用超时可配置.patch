@@ -1,0 +1,97 @@
+From ec376e84b62f80524a6d554f59ce98aac141dfc8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E9=99=88?= <chen@chendeMacBook-Air.local>
+Date: Wed, 16 Sep 2026 22:28:02 +0800
+Subject: [PATCH] =?UTF-8?q?feat:=20=E6=94=AF=E6=8C=81=20ANTHROPIC=5FTIMEOU?=
+ =?UTF-8?q?T=20=E6=94=BE=E5=AE=BD=E5=8D=95=E6=AC=A1=E8=B0=83=E7=94=A8?=
+ =?UTF-8?q?=E8=B6=85=E6=97=B6?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+慢速推理模型或自建网关（如蚂蚁数科 MaaS）单次调用常超过 120 秒，
+原先写死的超时会让管线在第一个阶段就 APITimeoutError 中断。
+
+- llm.py: 读取 ANTHROPIC_TIMEOUT（默认仍为 120，取值非法回退 120）
+- tests: 补默认值与覆盖值两分支测试（原测试把 120 写死）
+- .env.example: 增加该变量的注释说明
+---
+ .env.example                        |  3 +++
+ blueprint/llm.py                    |  7 ++++++-
+ tests/test_blueprint_regressions.py | 21 +++++++++++++++++++++
+ 3 files changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/.env.example b/.env.example
+index 44d2860..77b5391 100644
+--- a/.env.example
++++ b/.env.example
+@@ -8,6 +8,9 @@ ANTHROPIC_API_KEY=sk-ant-xxx
+ # 模型 ID（必填）
+ MODEL_ID=claude-sonnet-4-6
+ 
++# 单次调用超时秒数（可选，默认 120；慢速推理模型或网关可放宽）
++# ANTHROPIC_TIMEOUT=600
++
+ # Base URL（可选，Anthropic-compatible 网关）
+ # ANTHROPIC_BASE_URL=https://api.anthropic.com
+ 
+diff --git a/blueprint/llm.py b/blueprint/llm.py
+index d1c6a1a..6c4fe5e 100644
+--- a/blueprint/llm.py
++++ b/blueprint/llm.py
+@@ -127,8 +127,13 @@ class AnthropicRunner:
+             raise ValueError("请在 .env 中填写有效的 ANTHROPIC_API_KEY，或使用 --mock 离线预览")
+         self.model = model or os.getenv("MODEL_ID") or DEFAULT_MODEL
+         self.budget = budget or Budget()
++        # 单次调用超时（秒）。默认 120；慢速推理模型或网关可通过 ANTHROPIC_TIMEOUT 放宽。
++        try:
++            timeout = float(os.getenv("ANTHROPIC_TIMEOUT") or 120)
++        except ValueError:
++            timeout = 120.0
+         self.client = client or Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"),
+-                                         timeout=120.0, max_retries=0)
++                                         timeout=timeout, max_retries=0)
+         self.max_tokens = max_tokens
+ 
+     def complete(self, stage: str, system: str, prompt: str, schema: dict) -> dict:
+diff --git a/tests/test_blueprint_regressions.py b/tests/test_blueprint_regressions.py
+index 4a4ab86..fb4ae59 100644
+--- a/tests/test_blueprint_regressions.py
++++ b/tests/test_blueprint_regressions.py
+@@ -119,6 +119,8 @@ def test_environment_takes_precedence_and_client_settings(monkeypatch):
+     monkeypatch.setenv("MODEL_ID", "explicit-model")
+     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
++    monkeypatch.delenv("ANTHROPIC_TIMEOUT", raising=False)
++    monkeypatch.setattr("blueprint.llm.load_config", lambda: None)
+     import anthropic
+     settings = {}
+     def fake_client(**kwargs):
+@@ -130,6 +132,25 @@ def test_environment_takes_precedence_and_client_settings(monkeypatch):
+     assert settings["timeout"] == 120 and settings["max_retries"] == 0
+ 
+ 
++def test_timeout_follows_env_and_falls_back_on_garbage(monkeypatch):
++    """慢速模型/网关可用 ANTHROPIC_TIMEOUT 放宽；取值非法时回到默认 120。"""
++    import anthropic
++    monkeypatch.setattr("blueprint.llm.load_config", lambda: None)
++    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
++
++    def timeout_for(value: str) -> object:
++        monkeypatch.setenv("ANTHROPIC_TIMEOUT", value)
++        settings = {}
++        monkeypatch.setattr(anthropic, "Anthropic",
++                            lambda **kwargs: settings.update(kwargs) or object())
++        AnthropicRunner(budget=Budget())
++        return settings["timeout"]
++
++    assert timeout_for("600") == 600.0
++    assert timeout_for("not-a-number") == 120.0
++    assert timeout_for("") == 120.0
++
++
+ @pytest.mark.parametrize("key", ["", "sk-ant-xxx", "your-api-key"])
+ def test_placeholder_credentials_are_not_real(monkeypatch, key):
+     monkeypatch.setenv("ANTHROPIC_API_KEY", key)
+-- 
+2.50.1 (Apple Git-155)
+
