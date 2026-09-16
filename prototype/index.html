@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>读书养宠 · 可点击原型</title>
+<style>
+  :root{
+    --bg:#f6f1e7; --card:#fffdf8; --ink:#2f2a24; --muted:#8a7f70;
+    --line:#e4dbcb; --accent:#c96a3f; --ok:#4f8a5b; --warn:#c9a227; --bad:#a8563f;
+    --radius:16px; --shadow:0 6px 20px rgba(80,60,30,.08);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;}
+  .app{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;padding-bottom:74px}
+  header{padding:14px 16px 10px;display:flex;align-items:center;gap:10px}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  header .day{margin-left:auto;font-size:13px;color:var(--muted)}
+  .banner{margin:0 16px 12px;padding:10px 12px;border-radius:12px;background:#fff4e2;
+          border:1px solid #f0dcbb;font-size:13px;color:#8a6a33}
+  .view{padding:0 16px}
+  .view[hidden]{display:none}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+        box-shadow:var(--shadow);padding:16px;margin-bottom:14px}
+  .card h2{margin:0 0 6px;font-size:16px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .goal{background:#f3efe6;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14.5px}
+  .excerpt{font-size:15.5px;line-height:1.85;max-height:230px;overflow:auto;
+           padding-right:6px;border-left:3px solid #e9dfcd;padding-left:12px;color:#3d362e}
+  .excerpt.hidden{display:none}
+  textarea{width:100%;min-height:110px;border:1px solid var(--line);border-radius:12px;
+           padding:12px;font:inherit;background:#fff;resize:vertical}
+  button{font:inherit;border:0;border-radius:12px;padding:12px 16px;background:var(--accent);
+         color:#fff;font-weight:600;cursor:pointer}
+  button.ghost{background:#efe8db;color:#5b5044}
+  button.small{padding:8px 12px;font-size:13.5px;border-radius:10px}
+  button.block{width:100%;display:block;margin-top:10px}
+  button:disabled{opacity:.5;cursor:default}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .timer{font-variant-numeric:tabular-nums;font-size:15px;color:var(--accent);font-weight:600}
+  .progressbar{height:8px;background:#ece3d4;border-radius:6px;overflow:hidden;margin:8px 0 4px}
+  .progressbar > i{display:block;height:100%;background:var(--accent);width:0;transition:width .4s}
+  nav{position:fixed;bottom:0;left:0;right:0;background:#fffdf8cc;backdrop-filter:blur(10px);
+      border-top:1px solid var(--line);display:flex;max-width:430px;margin:0 auto}
+  nav button{flex:1;background:none;color:var(--muted);border-radius:0;padding:12px 0 16px;font-size:13px}
+  nav button.active{color:var(--accent)}
+  .room{position:relative;border-radius:var(--radius);height:250px;overflow:hidden;margin-bottom:14px;
+        border:1px solid var(--line);box-shadow:var(--shadow)}
+  .room .label{position:absolute;left:12px;top:12px;font-size:12.5px;color:#fff;
+               background:#00000033;padding:4px 10px;border-radius:999px;backdrop-filter:blur(4px)}
+  .room .floor{position:absolute;left:0;right:0;bottom:0;height:34%}
+  .pet{position:absolute;left:50%;bottom:26%;transform:translateX(-50%);transition:all .5s ease}
+  .pet.eating{animation:bob .5s ease 3}
+  @keyframes bob{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-10px)}}
+  .badge{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;background:#efe8db;color:#5b5044;margin:3px 4px 0 0}
+  .result{border-radius:12px;padding:12px;margin:10px 0;font-size:14.5px}
+  .result.pass{background:#eaf3ec;border:1px solid #cfe3d4}
+  .result.fail{background:#fbeee9;border:1px solid #f0d6cc}
+  .result.uncertain{background:#fdf6e3;border:1px solid #f0e3bd}
+  .kv{display:flex;justify-content:space-between;font-size:14px;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .kv:last-child{border-bottom:0}
+  .muted{color:var(--muted);font-size:13px}
+  .demo{border:1px dashed #d9cdb8;background:#fffaf0}
+  .demo h3{margin:0 0 8px;font-size:14px;color:#8a6a33}
+  .modal{position:fixed;inset:0;background:#00000055;display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .modal[hidden]{display:none}
+  .modal .box{background:#fffdf8;border-radius:var(--radius);padding:18px;max-width:380px;width:100%}
+  h3{font-size:15.5px}
+  ul{padding-left:18px;margin:8px 0}
+  li{margin:4px 0;font-size:14.5px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>读书养宠</h1>
+    <span class="day" id="dayLabel">第 3 天</span>
+  </header>
+  <div class="banner" id="expireBanner" hidden>
+    你停读了一段时间，按隐私设置，<b>原文与解析文本已清理</b>。进度、宠物、卡片都还在。
+  </div>
+
+  <!-- ==================== 今日卡 ==================== -->
+  <section class="view" id="view-today">
+    <div class="card">
+      <h2 id="cardTitle">今日任务卡</h2>
+      <div class="meta">
+        <span id="cardKindLabel">带原文节选</span> · 约 5 分钟 · 第 <span id="cardPages">12–14</span> 页
+      </div>
+      <div class="goal">🎯 <span id="cardGoal"></span></div>
+      <div class="progressbar"><i id="readProgress"></i></div>
+      <div class="excerpt" id="cardExcerpt"></div>
+      <div class="row" style="margin-top:12px;align-items:center">
+        <button class="small" id="btnStart">开始读（5 分钟）</button>
+        <span class="timer" id="timerLabel"></span>
+      </div>
+      <button class="block" id="btnToRetell" disabled>我读完了，去复述</button>
+    </div>
+
+    <div class="card">
+      <h3>今天的进度</h3>
+      <div class="kv"><span>累计完成</span><b><span id="doneCount">0</span> 张卡</b></div>
+      <div class="kv"><span>7 天内目标</span><b>3 张（当前 <span id="kpiState">未达成</span>）</b></div>
+      <div class="kv"><span>宠物状态</span><b id="petStateLabel">饿</b></div>
+    </div>
+
+    <div class="card demo">
+      <h3>🛠 演示控制（给测试用，真实产品不会有）</h3>
+      <div class="row">
+        <button class="small ghost" data-demo="room">切换房间主题</button>
+        <button class="small ghost" data-demo="pet">切换宠物状态</button>
+        <button class="small ghost" data-demo="kind">切成复习卡</button>
+        <button class="small ghost" data-demo="expire">模拟停读 7 天回来</button>
+        <button class="small ghost" data-demo="reset">重置</button>
+      </div>
+      <p class="muted" style="margin:10px 0 0">
+        判定用本地关键词模拟，<b>不是真实模型</b>；素材是占位图形，不是最终插画。
+      </p>
+    </div>
+  </section>
+
+  <!-- ==================== 宠物房间 ==================== -->
+  <section class="view" id="view-pet" hidden>
+    <div class="room" id="room">
+      <span class="label" id="roomLabel">书房</span>
+      <div class="floor" id="roomFloor"></div>
+      <div class="pet" id="petSvg"></div>
+    </div>
+    <div class="card">
+      <h3>宠物</h3>
+      <div class="kv"><span>状态</span><b id="petState2">饿</b></div>
+      <div class="kv"><span>性格标签</span><b id="petTags">（还没有）</b></div>
+      <div class="kv"><span>房间</span><b id="roomName">书房</b></div>
+      <p class="muted">房间主题和性格标签来自你读的内容，不是随机变化。</p>
+    </div>
+    <div class="card">
+      <h3>阅读记忆</h3>
+      <div class="kv"><span>已掌握</span><b id="mastered">（还没有）</b></div>
+      <div class="kv"><span>常忘记</span><b id="forgotten">（还没有）</b></div>
+      <div class="kv"><span>上次读到</span><b id="lastPage">—</b></div>
+    </div>
+  </section>
+
+  <!-- ==================== 设置 ==================== -->
+  <section class="view" id="view-me" hidden>
+    <div class="card">
+      <h3>这本书</h3>
+      <div class="kv"><span>书名</span><b>《慢一点也能养成习惯》</b></div>
+      <div class="kv"><span>原书文件</span><b id="fileState">已清理（不留存）</b></div>
+      <div class="kv"><span>解析文本</span><b id="textState">保留中</b></div>
+      <p class="muted">原书文件在上传解析完成后立即删除，我们不长期保存它。停读 7 天后，解析文本与节选也会清理，卡片转为复习卡。</p>
+    </div>
+    <div class="card">
+      <h3>数据</h3>
+      <button class="small ghost block" id="btnExport">导出我的阅读记录（JSON）</button>
+      <button class="small block" style="background:#a8563f" id="btnDelete">一键删除这本书</button>
+      <p class="muted">删除后立即从界面消失，进度与宠物记忆一并清除。</p>
+    </div>
+  </section>
+
+  <nav>
+    <button data-tab="today" class="active">今日卡</button>
+    <button data-tab="pet">宠物房间</button>
+    <button data-tab="me">设置</button>
+  </nav>
+</div>
+
+<!-- 复述弹层 -->
+<div class="modal" id="modalRetell" hidden>
+  <div class="box">
+    <h3 id="retellTitle">用你自己的话复述一下</h3>
+    <p class="muted" id="retellQuestion"></p>
+    <textarea id="retellInput" placeholder="一句话到三句话就够，不用照抄原文"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="small" id="btnSubmit">提交</button>
+      <button class="small ghost" id="btnCancel">今天先到这里</button>
+    </div>
+    <p class="muted" style="margin-top:10px">判定从宽：只要提到本段一个关键点就算通过；拿不准会说"存疑"，不算失败。</p>
+  </div>
+</div>
+
+<!-- 反馈弹层 -->
+<div class="modal" id="modalFeedback" hidden>
+  <div class="box">
+    <h3 id="fbTitle"></h3>
+    <div id="fbBody"></div>
+    <button class="small block" id="btnCloseFb">继续</button>
+  </div>
+</div>
+
+<!-- 删除确认 -->
+<div class="modal" id="modalDelete" hidden>
+  <div class="box">
+    <h3>确认删除这本书？</h3>
+    <p class="muted">将删除：任务卡、复述、进度、宠物记忆。删除后立即从界面消失，无法恢复。</p>
+    <div class="row">
+      <button class="small" style="background:#a8563f" id="btnConfirmDelete">确认删除</button>
+      <button class="small ghost" id="btnCancelDelete">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   读书养宠 · 可点击原型
+   - 判定：本地关键词模拟（明确不是真实模型）
+   - 存储：localStorage（原型用）
+   ========================================================================= */
+const KEY = 'dushu-yangchong-prototype-v1';
+
+const ROOMS = {
+  study:  { name:'书房',   wall:'#f0e2cb', floor:'#b98d5f', accent:'#8a5a33' },
+  forest: { name:'林间',   wall:'#dfe9d5', floor:'#8aa06a', accent:'#4f6b3c' },
+  night:  { name:'星夜',   wall:'#2f3b52', floor:'#3d4a63', accent:'#cfd8ea' }
+};
+const PET_STATES = {
+  hungry:    { label:'饿',           face:'( ·  · )' },
+  fed:       { label:'吃到知识',      face:'( ^  ^ )' },
+  digesting: { label:'消化中',        face:'( -  - )' },
+  newthing:  { label:'长出了主题物件', face:'( *  * )' }
+};
+// 样章：自写示例文本，避免版权问题
+const SAMPLE = {
+  pages: [12, 14],
+  goal: '读完这段，找出作者认为「习惯容易失败」的一个原因',
+  excerpt: `很多人以为习惯失败是因为意志力不够。作者不同意这个说法。\n\n` +
+           `他观察到：真正让人放弃的，往往是"启动成本"太高。比如想跑步，第一步不是穿上跑鞋，` +
+           `而是要决定路线、换衣服、找耳机、看天气——这一串决定耗掉的力气，比跑步本身还多。\n\n` +
+           `所以他建议把动作拆到小得可笑：先把跑鞋放在门口。第二天只需要"穿上它"，` +
+           `而不是"去跑步"。当启动成本低到不需要下决心时，行为才可能重复发生。\n\n` +
+           `他还提醒：不要用连续打卡来绑住自己。一旦断掉一天，人就容易觉得"已经毁了"，` +
+           `从而彻底放弃。可行的做法是允许中断，只要求"回来"。`,
+  keypoints: [
+    { id:'kp1', text:'启动成本太高，而不是意志力不够', keywords:['启动成本','启动','成本太高','意志力','下决心'] },
+    { id:'kp2', text:'把动作拆小到不需要下决心',       keywords:['拆小','拆到','小得','小步骤','降低门槛','门槛'] },
+    { id:'kp3', text:'不要用连续打卡绑住自己，允许中断', keywords:['打卡','连续','中断','断掉','回来'] }
+  ],
+  tags: ['方法','认知']
+};
+
+const freshState = () => ({
+  day: 3,
+  card: { kind:'excerpt', pages: SAMPLE.pages.slice(), goal: SAMPLE.goal, question:'不用照抄原文：你会怎样把这个原因讲给朋友听？' },
+  retellings: [],
+  done: 0,
+  mastered: [], forgotten: [],
+  pet: { state:'hungry', room:'study', tags:[], furniture:[] },
+  expired: false,
+  lastPage: 14
+});
+
+let S = load();
+
+function load(){
+  try { const raw = localStorage.getItem(KEY); if (raw) return JSON.parse(raw); } catch(e){}
+  return freshState();
+}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+/* ---------------- 渲染 ---------------- */
+const $ = (id) => document.getElementById(id);
+
+function petSvg(){
+  const pal = ROOMS[S.pet.room];
+  const eyes = { hungry:'·  ·', fed:'^  ^', digesting:'-  -', newthing:'*  *' }[S.pet.state];
+  const furniture = S.pet.furniture.length
+    ? `<text x="96" y="26" font-size="20" text-anchor="middle">${S.pet.furniture.map(f=>f==='bookmark'?'🔖':'⭐').join('')}</text>` : '';
+  return `<svg width="120" height="110" viewBox="0 0 120 110">
+    ${furniture}
+    <ellipse cx="60" cy="96" rx="34" ry="6" fill="#00000022"/>
+    <rect x="30" y="34" width="60" height="56" rx="26" fill="#3a3a3a"/>
+    <circle cx="26" cy="46" r="9" fill="#3a3a3a"/><circle cx="94" cy="46" r="9" fill="#3a3a3a"/>
+    <text x="60" y="70" font-size="15" fill="#f5f0e6" text-anchor="middle">${eyes}</text>
+    <text x="60" y="86" font-size="12" fill="#f5f0e6" text-anchor="middle">ᴗ</text>
+  </svg>`;
+}
+
+function render(){
+  const rm = ROOMS[S.pet.room];
+  // 顶部
+  $('dayLabel').textContent = `第 ${S.day} 天`;
+  $('expireBanner').hidden = !S.expired;
+
+  // 今日卡
+  const review = S.card.kind === 'review';
+  $('cardTitle').textContent = review ? '今日复习卡' : '今日任务卡';
+  $('cardKindLabel').textContent = review ? '无原文节选（原文已按隐私设置清理）' : '带原文节选';
+  $('cardPages').textContent = `${S.card.pages[0]}–${S.card.pages[1]}`;
+  $('cardGoal').textContent = S.card.goal;
+  $('cardExcerpt').textContent = review ? '（这一段原文已清理。回忆一下它的核心观点，然后复述。）' : SAMPLE.excerpt;
+  $('doneCount').textContent = S.done;
+  $('kpiState').textContent = S.done >= 3 ? '已达成 ✅' : '未达成';
+  $('petStateLabel').textContent = PET_STATES[S.pet.state].label;
+
+  // 宠物页
+  $('roomLabel').textContent = rm.name;
+  $('roomFloor').style.background = rm.floor;
+  $('room').style.background = `linear-gradient(${rm.wall}, ${rm.wall} 62%, ${rm.floor} 62%)`;
+  $('petSvg').innerHTML = petSvg();
+  $('petSvg').className = 'pet' + (S.pet.state === 'fed' ? ' eating' : '');
+  $('petState2').textContent = PET_STATES[S.pet.state].label;
+  $('petTags').textContent = S.pet.tags.length ? S.pet.tags.join(' · ') : '（还没有）';
+  $('roomName').textContent = rm.name;
+  $('mastered').textContent = S.mastered.length ? S.mastered.join(' · ') : '（还没有）';
+  $('forgotten').textContent = S.forgotten.length ? S.forgotten.join(' · ') : '（还没有）';
+  $('lastPage').textContent = `第 ${S.lastPage} 页`;
+  $('fileState').textContent = '已清理（不留存）';
+  $('textState').textContent = S.expired ? '已清理（停读 7 天）' : '保留中（滚动续期）';
+  $('retellQuestion').textContent = S.card.question;
+  $('retellTitle').textContent = review ? '回忆一下，用你自己的话讲一遍' : '用你自己的话复述一下';
+}
+
+/* ---------------- 复述判定（本地模拟） ---------------- */
+function judge(text){
+  const t = (text || '').trim();
+  if (t.length < 10) return { result:'uncertain', hits:[], why:'太短，无法判断你是否提到关键点' };
+  const hits = SAMPLE.keypoints.filter(k => k.keywords.some(w => t.includes(w)));
+  if (hits.length) return { result:'pass', hits, why:'提到了本段至少一个关键点' };
+  return { result:'fail', hits:[], why:'没有找到本段关键点的对应表达' };
+}
+
+function applyPass(hits){
+  S.done += 1;
+  S.pet.state = 'fed';
+  hits.forEach(h => {
+    if (S.mastered.includes(h.text) === false) S.mastered.push(h.text);
+  });
+  // 内容标签 → 性格 / 房间（每完成 3 张卡换一次房间主题，标签累积）
+  SAMPLE.tags.forEach(t => { if (!S.pet.tags.includes(t)) S.pet.tags.push(t); });
+  const rooms = Object.keys(ROOMS);
+  const idx = Math.min(rooms.length - 1, Math.floor(S.done / 3));
+  S.pet.room = rooms[idx];
+  if (S.done >= 4 && !S.pet.furniture.includes('bookmark')) S.pet.furniture.push('bookmark');
+  if (S.done >= 2) S.pet.state = 'newthing';
+}
+
+/* ---------------- 交互 ---------------- */
+let timerId = null, remain = 0;
+$('btnStart').onclick = () => {
+  if (timerId) return;
+  remain = 300; $('btnStart').disabled = true;
+  timerId = setInterval(() => {
+    remain -= 1;
+    const m = String(Math.floor(remain/60)).padStart(2,'0'), s = String(remain%60).padStart(2,'0');
+    $('timerLabel').textContent = `${m}:${s}`;
+    $('readProgress').style.width = `${((300-remain)/300*100).toFixed(1)}%`;
+    if (remain <= 0){ clearInterval(timerId); timerId = null; $('timerLabel').textContent = '时间到'; }
+  }, 1000);
+  // 原型里允许随时结束阅读
+  $('btnToRetell').disabled = false;
+};
+
+$('btnToRetell').onclick = () => { $('modalRetell').hidden = false; };
+$('btnCancel').onclick = () => {
+  $('modalRetell').hidden = true;
+  feedback('fail', [], '今天先到这里也可以。卡片会留着，明天回来接着读。', '不惩罚，不扣进度');
+};
+$('btnSubmit').onclick = () => {
+  const text = $('retellInput').value;
+  const r = judge(text);
+  S.retellings.push({ text, result:r.result, at:new Date().toISOString() });
+  if (r.result === 'pass') applyPass(r.hits);
+  if (r.result === 'fail') S.pet.state = 'hungry';
+  if (r.result === 'uncertain') S.pet.state = 'digesting';
+  $('modalRetell').hidden = true;
+  $('retellInput').value = '';
+  save(); render();
+
+  if (r.result === 'pass'){
+    const got = r.hits.map(h => `「${h.text}」`).join('、');
+    feedback('pass', r.hits, `我听见你抓住了 ${got}。这就是这一段的重点。`,
+             `知识食物 +1　宠物：${PET_STATES[S.pet.state].label}　累计完成 ${S.done} 张`);
+  } else if (r.result === 'uncertain'){
+    feedback('uncertain', [], '这段话有点短，我拿不准你是不是想表达关键点。<b>存疑不算失败</b>，宠物照样喂。',
+             '你可以补充一句再提交，也可以就这样继续。');
+  } else {
+    feedback('fail', [], '我没找到与这段关键点对应的表达。<b>不扣分、不惩罚</b>，建议回头看一眼这一处，再试一次。',
+             '提示：这段讲了"为什么放弃"和"怎么降低难度"。');
+  }
+};
+
+function feedback(kind, hits, body, extra){
+  $('fbTitle').textContent = kind === 'pass' ? '✅ 喂养成功' : kind === 'uncertain' ? '🤔 存疑（不算失败）' : '🌱 再试一次';
+  $('fbBody').innerHTML = `<div class="result ${kind}">${body}</div>
+    <p class="muted">${extra || ''}</p>
+    <p class="muted">原型说明：判定是本地关键词模拟，真实产品由模型完成，判定从宽。</p>`;
+  $('modalFeedback').hidden = false;
+}
+$('btnCloseFb').onclick = () => { $('modalFeedback').hidden = true; render(); };
+
+// Tab
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  ['today','pet','me'].forEach(t => $('view-'+t).hidden = (t !== b.dataset.tab));
+});
+
+// 删除
+$('btnDelete').onclick = () => { $('modalDelete').hidden = false; };
+$('btnCancelDelete').onclick = () => { $('modalDelete').hidden = true; };
+$('btnConfirmDelete').onclick = () => {
+  S = freshState(); S.deleted = true; save();
+  $('modalDelete').hidden = true;
+  document.querySelector('.app').innerHTML =
+    '<div style="padding:60px 24px;text-align:center"><h2>已删除</h2>' +
+    '<p class="muted">这本书的任务卡、复述、进度与宠物记忆已清除，界面立即不可见。</p>' +
+    '<button class="small" onclick="localStorage.removeItem(\'' + KEY + '\');location.reload()">重新开始演示</button></div>';
+};
+
+// 导出
+$('btnExport').onclick = () => {
+  const blob = new Blob([JSON.stringify(S, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = '读书养宠-我的记录.json'; a.click();
+};
+
+// 演示控制
+document.querySelectorAll('[data-demo]').forEach(b => b.onclick = () => {
+  const k = b.dataset.demo;
+  if (k === 'room'){
+    const ks = Object.keys(ROOMS);
+    S.pet.room = ks[(ks.indexOf(S.pet.room) + 1) % ks.length];
+  } else if (k === 'pet'){
+    const ks = Object.keys(PET_STATES);
+    S.pet.state = ks[(ks.indexOf(S.pet.state) + 1) % ks.length];
+  } else if (k === 'kind'){
+    const review = S.card.kind === 'review';
+    S.card.kind = review ? 'excerpt' : 'review';
+    S.card.goal = review ? '回忆这段的核心观点，并用你自己的话讲一遍'
+                         : SAMPLE.goal;
+    S.card.question = review ? '这个观点，你现在会怎么讲给朋友听？' : '不用照抄原文：你会怎样把这个原因讲给朋友听？';
+    S.expired = !review;
+  } else if (k === 'expire'){
+    S.expired = true; S.card.kind = 'review';
+    S.card.goal = '书面原文已清理，用记忆复述一次';
+    S.card.question = '回忆一下：作者认为习惯失败的原因是什么？';
+    S.day += 7;
+    // 到期只清节选与解析文本，卡片与进度不动
+  } else if (k === 'reset'){
+    S = freshState();
+  }
+  save(); render();
+});
+
+render();
+</script>
+</body>
+</html>
