@@ -574,3 +574,71 @@ SELECT retelling_pass_rate, denominator FROM v_kpi_guard;   -- 目标 ≥70%
 1. 按本文生成 **UI 原型**（任务卡 / 复述框 / 宠物房间 / 删除入口）
 2. 按本文生成 **代码骨架**（FastAPI 单体 + worker + 9 个工具 + 权限与审计）
 3. 先把 §5 的 7 项待确认定掉，再动代码
+
+---
+
+## 8. 修订 A：按已定决策更新（2026-09-16）
+
+> 本文 §2.3 是修订前的初稿。以下变更**以本节为准**（6 项决策全部由产品负责人确认）。
+
+### 8.1 变更清单
+
+| 决策 | 对数据模型/接口的影响 |
+|---|---|
+| **3A+** 原文一天不留 | `books` 去掉"原文长期引用"语义，`file_object_key` 只在解析中转期间有效，解析成功即清空并记录 `original_purged_at`；对象存储不再需要 7 天生命周期（只剩解析瞬间的中转桶）；§2.5 保留期矩阵中"PDF 原文 7 天"改为"**解析完成即删**" |
+| **1A** 滚动续期 + 复习卡 | `books.originals_expire_at` 改名为 `parse_text_expire_at`，且语义为「`last_reading_activity_at` + 7 天」滚动计算；`books` 新增 `last_reading_activity_at`；`task_cards` 新增 `card_kind`（`excerpt` / `review`）|
+| **2A** 邮箱 + 密码 | `accounts` 增加 `password_hash`（bcrypt/argon2），`login_type` 固定 `email` |
+| **4A** 模型与预算 | `config`：`MODEL_NAME=deepseek-flash`、`MAX_BOOK_TOKENS=200000`、`CARD_GEN_SLA_SECONDS=90`；`judgements` 保留成本字段用于对账 |
+| **5A** 宠物素材 | `pet_asset_map` 数据量：4 状态 × 3 房间 = 12 条（不含配饰） |
+| **6A** 存疑复核 | `manual_review_queue` 启用，产品负责人每周清一次 |
+| **7** 规模假设 | 无需改表（`reading_progress` 已按 `(account_id, book_id)` 建模）|
+
+### 8.2 修订后的关键 DDL 片段
+
+```sql
+-- accounts：邮箱 + 密码（自存哈希）
+ALTER TABLE accounts ADD COLUMN password_hash TEXT NOT NULL;   -- bcrypt / argon2id
+ALTER TABLE accounts ADD CONSTRAINT ck_login_type CHECK (login_type = 'email');
+
+-- books：原文不留存 + 滚动到期
+ALTER TABLE books RENAME COLUMN originals_expire_at TO parse_text_expire_at;
+ALTER TABLE books ADD COLUMN last_reading_activity_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE books ADD COLUMN original_purged_at TIMESTAMPTZ;   -- 解析成功、原文删除的时间
+COMMENT ON COLUMN books.file_object_key IS '仅解析中转期间有效；解析成功即清空，原文不长期保存';
+COMMENT ON COLUMN books.parse_text_expire_at IS '= last_reading_activity_at + 7 天（滚动）；到期后解析文本不可读，卡片转复习卡';
+
+-- task_cards：区分带节选 / 复习型
+ALTER TABLE task_cards ADD COLUMN card_kind TEXT NOT NULL DEFAULT 'excerpt';
+ALTER TABLE task_cards ADD CONSTRAINT ck_card_kind CHECK (card_kind IN ('excerpt', 'review'));
+
+-- 到期后转复习卡：只清节选，不动卡片与关键点
+UPDATE task_cards SET excerpt_md = NULL, card_kind = 'review'
+ WHERE excerpt_md IS NOT NULL
+   AND book_id IN (SELECT book_id FROM books WHERE parse_text_expire_at <= now());
+```
+
+### 8.3 修订后的保留期矩阵（覆盖 §2.5）
+
+| 数据 | 保留 | 到期后行为 |
+|---|---|---|
+| PDF 原文 | **不保留**（解析完成即删） | 记录 `original_purged_at` 作为审计 |
+| `source_blocks` / `chapters` / `concepts` | 7 天（滚动：停读 7 天才到期） | 物理删除；读取接口先判到期 |
+| `task_cards.excerpt_md` | 同上 | 置空，`card_kind` 转 `review`，**卡片本身保留** |
+| `keypoints` | **长期** | 复习卡与判定的唯一依据 |
+| 任务卡 / 复述 / 判定 / 进度 / 记忆 / 宠物状态 | **长期** | 保留（用户删除时一并清除） |
+| 审计（`outbound_audit` / `delete_audit`）与 `gen_idempotency` | 长期 | 保留 |
+
+### 8.4 接口增量
+
+| 端点 | 变化 |
+|---|---|
+| `POST /books` | 201 返回体增加 `original_purged: true`（解析完成后）；不再返回"原文到期时间"，改为 `parse_text_expire_at` |
+| `GET /books/{id}` | 增加 `parse_text_expire_at`、`last_reading_activity_at`、`card_mode: excerpt \| review` |
+| `GET /today` | `card_kind=review` 时不返回 `excerpt_md`，`question` 改为"用你自己的话讲一遍这个观点"句式 |
+| 新增 `POST /accounts/register` / `POST /accounts/login` | 邮箱 + 密码；登录失败次数限流 |
+| `POST /books/{id}/resume` | 停读 7 天后重新上传同一本书（`file_sha256` 相同）→ 沿用进度、关键点、宠物，只解析未读部分 |
+
+### 8.5 本文的自查（修订部分）
+
+- 上述 DDL 与接口增量**未经独立审稿**，也未在数据库上执行验证。
+- 3A+ 带来的一个待确认细节：解析文本 7 天到期后，若用户重新上传同一本书，`keypoints` 与旧卡片复用，但**新解析出的 `source_blocks` 会与旧 `keypoints` 并存**，需要迁移脚本处理"同一页重复生成"（幂等表已按 `book_id + 页范围 + 类型` 兜底，但要确认跨"续传"场景仍成立）。
